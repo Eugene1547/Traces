@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct ImportancePicker: View {
+    @EnvironmentObject private var settings: AppSettings
     @Binding var selection: Importance
 
     var body: some View {
@@ -18,7 +19,7 @@ struct ImportancePicker: View {
                         Circle()
                             .fill(importance.color)
                             .frame(width: 8, height: 8)
-                        Text(importance.label)
+                        Text(importance.label(settings.language))
                             .font(.caption)
                     }
                     .padding(.horizontal, 8)

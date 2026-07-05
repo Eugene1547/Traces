@@ -7,8 +7,10 @@ import SwiftUI
 
 struct AddItemFormView: View {
     @EnvironmentObject private var store: ChecklistStore
+    @EnvironmentObject private var settings: AppSettings
     @State private var name = ""
     @State private var dueTime = Date()
+    @State private var hasDueTime = true
     @State private var importance: Importance = .medium
 
     private var canAdd: Bool {
@@ -17,30 +19,49 @@ struct AddItemFormView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TextField("名称", text: $name)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(add)
+            Text(L.newTodoTitle.text(settings.language))
+                .font(.title3.bold())
 
-            HStack {
-                DatePicker("", selection: $dueTime)
-                    .labelsHidden()
+            VStack(alignment: .leading, spacing: 10) {
+                TextField(L.namePlaceholder.text(settings.language), text: $name)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(add)
 
-                ImportancePicker(selection: $importance)
+                HStack {
+                    Toggle(
+                        L.noDeadline.text(settings.language),
+                        isOn: Binding(get: { !hasDueTime }, set: { hasDueTime = !$0 })
+                    )
+                    .toggleStyle(.checkbox)
 
-                Spacer()
+                    if hasDueTime {
+                        DatePicker("", selection: $dueTime)
+                            .labelsHidden()
+                    }
+                }
 
-                Button("添加", action: add)
-                    .disabled(!canAdd)
+                HStack {
+                    ImportancePicker(selection: $importance)
+
+                    Spacer()
+
+                    Button(L.addButton.text(settings.language), action: add)
+                        .disabled(!canAdd)
+                }
             }
+            .padding(12)
+            .background(Color.secondary.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .padding()
     }
 
     private func add() {
         guard canAdd else { return }
-        store.addItem(name: name, dueTime: dueTime, importance: importance)
+        store.addItem(name: name, dueTime: hasDueTime ? dueTime : nil, importance: importance)
         name = ""
         importance = .medium
         dueTime = Date()
+        hasDueTime = true
     }
 }

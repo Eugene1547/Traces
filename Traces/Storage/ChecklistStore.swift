@@ -35,7 +35,7 @@ final class ChecklistStore: ObservableObject {
         load()
     }
 
-    func addItem(name: String, dueTime: Date, importance: Importance) {
+    func addItem(name: String, dueTime: Date?, importance: Importance) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let nextOrder = (todoItems.map(\.sortOrder).max() ?? 0) + 1

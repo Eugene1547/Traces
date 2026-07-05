@@ -29,7 +29,10 @@ final class FloatingPanelController {
         panel.isMovableByWindowBackground = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
-        panel.contentView = NSHostingView(rootView: rootView)
+
+        let hostingView = NSHostingView(rootView: rootView)
+        hostingView.sizingOptions = [.intrinsicContentSize]
+        panel.contentView = hostingView
         panel.setFrameAutosaveName("FloatingPanel")
 
         self.panel = panel

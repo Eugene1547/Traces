@@ -12,11 +12,14 @@ enum Importance: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var label: String {
-        switch self {
-        case .high: return "高"
-        case .medium: return "中"
-        case .low: return "低"
+    func label(_ language: AppLanguage) -> String {
+        switch (self, language) {
+        case (.high, .zh): return "高"
+        case (.medium, .zh): return "中"
+        case (.low, .zh): return "低"
+        case (.high, .en): return "High"
+        case (.medium, .en): return "Medium"
+        case (.low, .en): return "Low"
         }
     }
 
@@ -41,7 +44,7 @@ enum Importance: String, Codable, CaseIterable, Identifiable {
 struct ChecklistItem: Identifiable, Codable, Equatable {
     let id: UUID
     var name: String
-    var dueTime: Date
+    var dueTime: Date?
     var importance: Importance
     var isCompleted: Bool
     var sortOrder: Double
@@ -51,7 +54,7 @@ struct ChecklistItem: Identifiable, Codable, Equatable {
     init(
         id: UUID = UUID(),
         name: String,
-        dueTime: Date,
+        dueTime: Date?,
         importance: Importance,
         isCompleted: Bool = false,
         sortOrder: Double,

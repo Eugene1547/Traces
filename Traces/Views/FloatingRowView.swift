@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct FloatingRowView: View {
+    @EnvironmentObject private var settings: AppSettings
     let item: ChecklistItem
     let onComplete: () -> Void
 
@@ -30,7 +31,7 @@ struct FloatingRowView: View {
 
             Spacer(minLength: 4)
 
-            Text(Self.timeFormatter.string(from: item.dueTime))
+            Text(item.dueTime.map { Self.timeFormatter.string(from: $0) } ?? L.noDeadlineShort.text(settings.language))
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 

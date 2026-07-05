@@ -22,9 +22,19 @@ struct FloatingChecklistView: View {
         case .importanceDesc:
             return store.todoItems.sorted { $0.importance.sortWeight < $1.importance.sortWeight }
         case .timeAsc:
-            return store.todoItems.sorted { $0.dueTime < $1.dueTime }
+            return store.todoItems.sorted { Self.compareDueTime($0.dueTime, $1.dueTime, ascending: true) }
         case .timeDesc:
-            return store.todoItems.sorted { $0.dueTime > $1.dueTime }
+            return store.todoItems.sorted { Self.compareDueTime($0.dueTime, $1.dueTime, ascending: false) }
+        }
+    }
+
+    /// Items without a due time always sort after items with one, regardless of direction.
+    private static func compareDueTime(_ lhs: Date?, _ rhs: Date?, ascending: Bool) -> Bool {
+        switch (lhs, rhs) {
+        case let (l?, r?): return ascending ? l < r : l > r
+        case (nil, nil): return false
+        case (nil, _): return false
+        case (_, nil): return true
         }
     }
 
@@ -33,32 +43,31 @@ struct FloatingChecklistView: View {
             header
             Divider().opacity(0.3)
             if displayedItems.isEmpty {
-                Text("暂无待办")
+                Text(L.emptyTodo.text(settings.language))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 24)
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(displayedItems) { item in
-                            FloatingRowView(item: item) {
-                                store.complete(item.id)
-                            }
-                            .onDrag {
-                                NSItemProvider(object: item.id.uuidString as NSString)
-                            }
-                            .onDrop(
-                                of: [.text],
-                                delegate: ReorderDropDelegate(targetID: item.id, onReorder: handleReorder)
-                            )
-                            if item.id != displayedItems.last?.id {
-                                Divider().opacity(0.15).padding(.leading, 34)
-                            }
+                VStack(spacing: 0) {
+                    ForEach(displayedItems) { item in
+                        FloatingRowView(item: item) {
+                            store.complete(item.id)
+                        }
+                        .onDrag {
+                            NSItemProvider(object: item.id.uuidString as NSString)
+                        }
+                        .onDrop(
+                            of: [.text],
+                            delegate: ReorderDropDelegate(targetID: item.id, onReorder: handleReorder)
+                        )
+                        if item.id != displayedItems.last?.id {
+                            Divider().opacity(0.15).padding(.leading, 34)
                         }
                     }
                 }
             }
         }
+        .padding(.bottom, 8)
         .background(
             Color(nsColor: .windowBackgroundColor).opacity(settings.opacity)
         )

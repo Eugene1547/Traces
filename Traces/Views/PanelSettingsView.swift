@@ -12,30 +12,30 @@ struct PanelSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("透明度")
+                Text(L.opacityLabel.text(settings.language))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Slider(value: $settings.opacity, in: AppSettings.opacityRange)
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("排序规则")
+                Text(L.sortRuleLabel.text(settings.language))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Picker("", selection: $settings.sortRule) {
                     ForEach(SortRule.allCases) { rule in
-                        Text(rule.label).tag(rule)
+                        Text(rule.label(settings.language)).tag(rule)
                     }
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
             }
 
-            Toggle("置顶", isOn: $settings.isPinned)
+            Toggle(L.pinLabel.text(settings.language), isOn: $settings.isPinned)
 
             Divider()
 
-            Button("打开主窗口", action: onOpenMainWindow)
+            Button(L.openMainWindowButton.text(settings.language), action: onOpenMainWindow)
         }
         .padding(14)
         .frame(width: 200)

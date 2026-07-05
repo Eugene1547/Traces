@@ -15,6 +15,7 @@ final class AppSettings: ObservableObject {
         static let isPinned = "settings.isPinned"
         static let sortRule = "settings.sortRule"
         static let isDarkMode = "settings.isDarkMode"
+        static let language = "settings.language"
     }
 
     @Published var opacity: Double {
@@ -37,6 +38,10 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(sortRule.rawValue, forKey: Keys.sortRule) }
     }
 
+    @Published var language: AppLanguage {
+        didSet { defaults.set(language.rawValue, forKey: Keys.language) }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -57,5 +62,10 @@ final class AppSettings: ObservableObject {
             sortRule = .importanceDesc
         }
         isDarkMode = defaults.bool(forKey: Keys.isDarkMode)
+        if let raw = defaults.string(forKey: Keys.language), let lang = AppLanguage(rawValue: raw) {
+            language = lang
+        } else {
+            language = .zh
+        }
     }
 }

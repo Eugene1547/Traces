@@ -17,6 +17,15 @@ struct MainWindowView: View {
                     .font(.headline)
                 Spacer()
                 Button {
+                    settings.language = settings.language == .zh ? .en : .zh
+                } label: {
+                    Text(settings.language.shortLabel)
+                        .font(.caption.bold())
+                }
+                .buttonStyle(.plain)
+                .help("切换语言 / Switch language")
+
+                Button {
                     settings.isDarkMode.toggle()
                 } label: {
                     Image(systemName: settings.isDarkMode ? "moon.fill" : "sun.max.fill")
@@ -31,7 +40,7 @@ struct MainWindowView: View {
             AddItemFormView()
             Divider()
             List {
-                Section("待办 (\(store.todoItems.count))") {
+                Section {
                     ForEach(store.todoItems.sorted(by: { $0.sortOrder < $1.sortOrder })) { item in
                         TodoRow(item: item) {
                             editingItem = item
@@ -39,9 +48,13 @@ struct MainWindowView: View {
                             store.delete(item.id)
                         }
                     }
+                } header: {
+                    Text("\(L.todoSection.text(settings.language)) (\(store.todoItems.count))")
+                        .font(.title3.bold())
+                        .foregroundStyle(.primary)
                 }
 
-                Section("已完成 (\(store.completedItems.count))") {
+                Section {
                     ForEach(store.completedItems) { item in
                         CompletedRow(item: item) {
                             store.reopen(item.id)
@@ -49,6 +62,10 @@ struct MainWindowView: View {
                             store.delete(item.id)
                         }
                     }
+                } header: {
+                    Text("\(L.completedSection.text(settings.language)) (\(store.completedItems.count))")
+                        .font(.title3.bold())
+                        .foregroundStyle(.primary)
                 }
             }
             .listStyle(.inset)
@@ -62,6 +79,7 @@ struct MainWindowView: View {
 }
 
 private struct TodoRow: View {
+    @EnvironmentObject private var settings: AppSettings
     let item: ChecklistItem
     let onTap: () -> Void
     let onDelete: () -> Void
@@ -80,7 +98,7 @@ private struct TodoRow: View {
                 .frame(width: 8, height: 8)
             Text(item.name)
             Spacer()
-            Text(Self.timeFormatter.string(from: item.dueTime))
+            Text(item.dueTime.map { Self.timeFormatter.string(from: $0) } ?? L.noDeadlineShort.text(settings.language))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Button {
@@ -97,9 +115,17 @@ private struct TodoRow: View {
 }
 
 private struct CompletedRow: View {
+    @EnvironmentObject private var settings: AppSettings
     let item: ChecklistItem
     let onRestore: () -> Void
     let onDelete: () -> Void
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter
+    }()
 
     var body: some View {
         HStack {
@@ -110,7 +136,10 @@ private struct CompletedRow: View {
                 .strikethrough()
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("恢复", action: onRestore)
+            Text(Self.timeFormatter.string(from: item.completedAt ?? item.createdAt))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button(L.restoreButton.text(settings.language), action: onRestore)
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
             Button {
