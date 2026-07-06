@@ -4,14 +4,15 @@
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct FloatingChecklistView: View {
     @EnvironmentObject private var store: ChecklistStore
     @EnvironmentObject private var settings: AppSettings
     @State private var showSettings = false
     @State private var draggingItemID: UUID?
+    @State private var dragTranslation: CGFloat = 0
     @State private var hoveredGap: Int?
+    @State private var rowFrames: [UUID: CGRect] = [:]
 
     let onOpenMainWindow: () -> Void
 
@@ -52,15 +53,30 @@ struct FloatingChecklistView: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(displayedItems.enumerated()), id: \.element.id) { index, item in
-                        GapDropZone(index: index, hoveredGap: $hoveredGap, onDrop: performReorder)
-                        FloatingRowView(item: item, isDragging: draggingItemID == item.id) {
-                            store.complete(item.id)
-                        } onDragStart: {
-                            draggingItemID = item.id
-                        }
+                        GapIndicator(index: index, hoveredGap: hoveredGap)
+                        FloatingRowView(
+                            item: item,
+                            isDragging: draggingItemID == item.id,
+                            dragOffset: draggingItemID == item.id ? dragTranslation : 0,
+                            onComplete: { store.complete(item.id) },
+                            onDragChanged: { translation in
+                                handleDragChanged(itemID: item.id, translation: translation)
+                            },
+                            onDragEnded: handleDragEnded
+                        )
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear.preference(
+                                    key: RowFramePreferenceKey.self,
+                                    value: [item.id: proxy.frame(in: .named("floatingList"))]
+                                )
+                            }
+                        )
                     }
-                    GapDropZone(index: displayedItems.count, hoveredGap: $hoveredGap, onDrop: performReorder)
+                    GapIndicator(index: displayedItems.count, hoveredGap: hoveredGap)
                 }
+                .coordinateSpace(name: "floatingList")
+                .onPreferenceChange(RowFramePreferenceKey.self) { rowFrames = $0 }
             }
         }
         .padding(.bottom, 8)
@@ -100,12 +116,38 @@ struct FloatingChecklistView: View {
         .gesture(WindowDragGesture())
     }
 
-    /// Inserts the item currently being dragged before `displayedItems[gapIndex]`
-    /// (or at the end, when `gapIndex == displayedItems.count`).
-    private func performReorder(at gapIndex: Int) -> Bool {
-        guard let draggedID = draggingItemID else { return false }
+    private func handleDragChanged(itemID: UUID, translation: CGSize) {
+        if draggingItemID != itemID { draggingItemID = itemID }
+        dragTranslation = translation.height
+
+        guard let startFrame = rowFrames[itemID] else { return }
+        let currentY = startFrame.midY + translation.height
+        let gap = gapIndex(for: currentY, excluding: itemID)
+        if hoveredGap != gap {
+            withAnimation(.easeOut(duration: 0.12)) { hoveredGap = gap }
+        }
+    }
+
+    /// Counts how many of the other rows sit above `y`, giving the gap index `y` currently falls into.
+    private func gapIndex(for y: CGFloat, excluding draggedID: UUID) -> Int {
+        var gap = 0
+        for id in displayedItems.map(\.id) where id != draggedID {
+            if let frame = rowFrames[id], y > frame.midY {
+                gap += 1
+            }
+        }
+        return gap
+    }
+
+    private func handleDragEnded() {
+        defer {
+            draggingItemID = nil
+            dragTranslation = 0
+            hoveredGap = nil
+        }
+        guard let draggedID = draggingItemID, let gapIndex = hoveredGap else { return }
         var order = displayedItems.map(\.id)
-        guard let from = order.firstIndex(of: draggedID) else { return false }
+        guard let from = order.firstIndex(of: draggedID) else { return }
         order.remove(at: from)
         let insertAt = from < gapIndex ? gapIndex - 1 : gapIndex
         order.insert(draggedID, at: min(insertAt, order.count))
@@ -113,30 +155,20 @@ struct FloatingChecklistView: View {
             store.reorder(ids: order)
         }
         settings.sortRule = .manual
-        draggingItemID = nil
-        return true
     }
 }
 
-/// A custom, unregistered UTI for reorder drags. Using `.text` here previously let macOS treat
-/// the drag as a droppable text clipping, so dropping outside the app (e.g. on the Desktop)
-/// created a stray file from the dragged item's id — Finder only knows how to conjure files out
-/// of recognized types like plain text, so a type it's never seen is never offered as one.
-///
-/// Note: don't pair this with `visibility: .ownProcess` on the item provider. Even an in-app drag
-/// is brokered through the system pasteboard server, which isn't literally "the same process" as
-/// either side, so `.ownProcess` silently drops the data before our own `onDrop` ever sees it.
-/// `.all` is what actually reaches `performDrop` here.
-extension UTType {
-    static let checklistItemID = UTType(exportedAs: "com.traces.app.checklist-item-id")
+private struct RowFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [UUID: CGRect] = [:]
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
+    }
 }
 
-/// A thin drop target sitting between (and around) rows, representing "insert here" rather than
-/// "swap with this row". Shows a highlighted insertion line while a drag hovers over it.
-private struct GapDropZone: View {
+/// A thin visual indicator sitting between (and around) rows, showing where a drag would insert.
+private struct GapIndicator: View {
     let index: Int
-    @Binding var hoveredGap: Int?
-    let onDrop: (Int) -> Bool
+    let hoveredGap: Int?
 
     var body: some View {
         ZStack {
@@ -150,28 +182,5 @@ private struct GapDropZone: View {
             }
         }
         .frame(height: 9)
-        .contentShape(Rectangle())
-        .onDrop(of: [.checklistItemID], delegate: GapDropDelegate(index: index, hoveredGap: $hoveredGap, onDrop: onDrop))
-    }
-}
-
-private struct GapDropDelegate: DropDelegate {
-    let index: Int
-    @Binding var hoveredGap: Int?
-    let onDrop: (Int) -> Bool
-
-    func dropEntered(info: DropInfo) {
-        withAnimation(.easeOut(duration: 0.15)) { hoveredGap = index }
-    }
-
-    func dropExited(info: DropInfo) {
-        withAnimation(.easeOut(duration: 0.15)) {
-            if hoveredGap == index { hoveredGap = nil }
-        }
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        defer { hoveredGap = nil }
-        return onDrop(index)
     }
 }

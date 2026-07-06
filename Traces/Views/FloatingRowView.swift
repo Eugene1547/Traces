@@ -4,14 +4,15 @@
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct FloatingRowView: View {
     @EnvironmentObject private var settings: AppSettings
     let item: ChecklistItem
     let isDragging: Bool
+    let dragOffset: CGFloat
     let onComplete: () -> Void
-    let onDragStart: () -> Void
+    let onDragChanged: (CGSize) -> Void
+    let onDragEnded: () -> Void
 
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -27,28 +28,25 @@ struct FloatingRowView: View {
             Spacer(minLength: 4)
             dueTimeText
             dragHandle
-                .onDrag {
-                    onDragStart()
-                    let provider = NSItemProvider()
-                    provider.registerDataRepresentation(
-                        forTypeIdentifier: UTType.checklistItemID.identifier,
-                        visibility: .all
-                    ) { completion in
-                        completion(Data(item.id.uuidString.utf8), nil)
-                        return nil
-                    }
-                    return provider
-                }
+                .gesture(
+                    DragGesture(minimumDistance: 2)
+                        .onChanged { onDragChanged($0.translation) }
+                        .onEnded { _ in onDragEnded() }
+                )
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .contentShape(Rectangle())
-        .opacity(isDragging ? 0.3 : 1)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(nsColor: .windowBackgroundColor))
+                .opacity(isDragging ? 1 : 0)
+                .shadow(color: .black.opacity(isDragging ? 0.25 : 0), radius: 6, y: 3)
+        )
+        .offset(y: dragOffset)
+        .zIndex(isDragging ? 1 : 0)
     }
 
-    // Shared pieces, reused by both the live row above and `previewCard` below — kept as
-    // independent subviews (rather than one composed "row content" property) so the drag
-    // preview doesn't recursively reference the view that defines it.
     private var checkboxButton: some View {
         Button(action: onComplete) {
             Image(systemName: "square")
