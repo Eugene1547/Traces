@@ -10,6 +10,10 @@ struct MainWindowView: View {
     @EnvironmentObject private var settings: AppSettings
     @State private var editingItem: ChecklistItem?
 
+    private var sortedTodoItems: [ChecklistItem] {
+        store.todoItems.sorted(by: { $0.sortOrder < $1.sortOrder })
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -39,42 +43,60 @@ struct MainWindowView: View {
 
             AddItemFormView()
             Divider()
-            List {
-                Section {
-                    ForEach(store.todoItems.sorted(by: { $0.sortOrder < $1.sortOrder })) { item in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    SectionHeader(title: "\(L.todoSection.text(settings.language)) (\(store.todoItems.count))")
+                        .padding(.top, 14)
+
+                    ForEach(sortedTodoItems) { item in
                         TodoRow(item: item) {
                             editingItem = item
                         } onDelete: {
                             store.delete(item.id)
                         }
+                        .padding(.vertical, 6)
+                        if item.id != sortedTodoItems.last?.id {
+                            Divider()
+                        }
                     }
-                } header: {
-                    Text("\(L.todoSection.text(settings.language)) (\(store.todoItems.count))")
-                        .font(.title3.bold())
-                        .foregroundStyle(.primary)
-                }
 
-                Section {
+                    SectionHeader(title: "\(L.completedSection.text(settings.language)) (\(store.completedItems.count))")
+                        .padding(.top, 20)
+
                     ForEach(store.completedItems) { item in
                         CompletedRow(item: item) {
                             store.reopen(item.id)
                         } onDelete: {
                             store.delete(item.id)
                         }
+                        .padding(.vertical, 6)
+                        if item.id != store.completedItems.last?.id {
+                            Divider()
+                        }
                     }
-                } header: {
-                    Text("\(L.completedSection.text(settings.language)) (\(store.completedItems.count))")
-                        .font(.title3.bold())
-                        .foregroundStyle(.primary)
                 }
+                .padding(.horizontal)
+                .padding(.bottom, 14)
             }
-            .listStyle(.inset)
         }
         .frame(minWidth: 420, minHeight: 520)
         .sheet(item: $editingItem) { item in
             EditItemSheet(item: item)
         }
         .preferredColorScheme(settings.isDarkMode ? .dark : .light)
+    }
+}
+
+private struct SectionHeader: View {
+    let title: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.title3.bold())
+                .foregroundStyle(.primary)
+            Divider()
+        }
     }
 }
 
@@ -94,7 +116,7 @@ private struct TodoRow: View {
     var body: some View {
         HStack {
             Circle()
-                .fill(item.importance.color)
+                .fill(item.displayColor)
                 .frame(width: 8, height: 8)
             Text(item.name)
             Spacer()
@@ -130,7 +152,7 @@ private struct CompletedRow: View {
     var body: some View {
         HStack {
             Circle()
-                .fill(item.importance.color)
+                .fill(item.displayColor)
                 .frame(width: 8, height: 8)
             Text(item.name)
                 .strikethrough()

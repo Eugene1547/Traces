@@ -24,6 +24,10 @@ struct FloatingRowView: View {
             }
             .buttonStyle(.plain)
 
+            Circle()
+                .fill(item.displayColor)
+                .frame(width: 8, height: 8)
+
             Text(item.name)
                 .font(.system(size: 13))
                 .lineLimit(1)
@@ -34,10 +38,6 @@ struct FloatingRowView: View {
             Text(item.dueTime.map { Self.timeFormatter.string(from: $0) } ?? L.noDeadlineShort.text(settings.language))
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
-
-            Circle()
-                .fill(item.importance.color)
-                .frame(width: 8, height: 8)
 
             Image(systemName: "line.3.horizontal")
                 .foregroundStyle(.tertiary)

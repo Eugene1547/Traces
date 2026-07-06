@@ -12,6 +12,7 @@ struct AddItemFormView: View {
     @State private var dueTime = Date()
     @State private var hasDueTime = true
     @State private var importance: Importance = .medium
+    @State private var customColor: RGBAColor?
 
     private var canAdd: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -37,11 +38,12 @@ struct AddItemFormView: View {
                     if hasDueTime {
                         DatePicker("", selection: $dueTime)
                             .labelsHidden()
+                            .padding(.trailing, 8)
                     }
                 }
 
                 HStack {
-                    ImportancePicker(selection: $importance)
+                    ImportancePicker(selection: $importance, customColor: $customColor)
 
                     Spacer()
 
@@ -58,9 +60,10 @@ struct AddItemFormView: View {
 
     private func add() {
         guard canAdd else { return }
-        store.addItem(name: name, dueTime: hasDueTime ? dueTime : nil, importance: importance)
+        store.addItem(name: name, dueTime: hasDueTime ? dueTime : nil, importance: importance, customColor: customColor)
         name = ""
         importance = .medium
+        customColor = nil
         dueTime = Date()
         hasDueTime = true
     }

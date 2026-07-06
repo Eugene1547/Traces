@@ -54,10 +54,18 @@ struct FloatingChecklistView: View {
                             store.complete(item.id)
                         }
                         .onDrag {
-                            NSItemProvider(object: item.id.uuidString as NSString)
+                            let provider = NSItemProvider()
+                            provider.registerDataRepresentation(
+                                forTypeIdentifier: UTType.checklistItemID.identifier,
+                                visibility: .ownProcess
+                            ) { completion in
+                                completion(Data(item.id.uuidString.utf8), nil)
+                                return nil
+                            }
+                            return provider
                         }
                         .onDrop(
-                            of: [.text],
+                            of: [.checklistItemID],
                             delegate: ReorderDropDelegate(targetID: item.id, onReorder: handleReorder)
                         )
                         if item.id != displayedItems.last?.id {
@@ -72,7 +80,7 @@ struct FloatingChecklistView: View {
             Color(nsColor: .windowBackgroundColor).opacity(settings.opacity)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .frame(minWidth: 260, maxWidth: 320)
+        .frame(width: settings.panelWidth)
         .preferredColorScheme(settings.isDarkMode ? .dark : .light)
     }
 
@@ -82,6 +90,11 @@ struct FloatingChecklistView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
+            Button(action: onOpenMainWindow) {
+                Image(systemName: "macwindow")
+            }
+            .buttonStyle(.plain)
+            .help(L.openMainWindowButton.text(settings.language))
             Button {
                 showSettings.toggle()
             } label: {
@@ -89,7 +102,7 @@ struct FloatingChecklistView: View {
             }
             .buttonStyle(.plain)
             .popover(isPresented: $showSettings, arrowEdge: .bottom) {
-                PanelSettingsView(onOpenMainWindow: onOpenMainWindow)
+                PanelSettingsView()
                     .environmentObject(settings)
             }
         }
@@ -110,14 +123,21 @@ struct FloatingChecklistView: View {
     }
 }
 
+/// A private, in-process-only UTI for reorder drags. Using `.text` here previously let macOS
+/// treat the drag as a droppable text clipping, so dropping outside the app (e.g. on the Desktop)
+/// created a stray file from the dragged item's id. This type never leaves the app.
+private extension UTType {
+    static let checklistItemID = UTType(exportedAs: "com.traces.app.checklist-item-id")
+}
+
 private struct ReorderDropDelegate: DropDelegate {
     let targetID: UUID
     let onReorder: (_ draggedID: UUID, _ targetID: UUID) -> Void
 
     func performDrop(info: DropInfo) -> Bool {
-        guard let provider = info.itemProviders(for: [.text]).first else { return false }
-        provider.loadObject(ofClass: NSString.self) { object, _ in
-            guard let idString = object as? String, let draggedID = UUID(uuidString: idString) else { return }
+        guard let provider = info.itemProviders(for: [.checklistItemID]).first else { return false }
+        provider.loadDataRepresentation(forTypeIdentifier: UTType.checklistItemID.identifier) { data, _ in
+            guard let data, let idString = String(data: data, encoding: .utf8), let draggedID = UUID(uuidString: idString) else { return }
             DispatchQueue.main.async {
                 onReorder(draggedID, targetID)
             }

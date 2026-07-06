@@ -15,6 +15,7 @@ struct EditItemSheet: View {
     @State private var dueTime: Date
     @State private var hasDueTime: Bool
     @State private var importance: Importance
+    @State private var customColor: RGBAColor?
 
     init(item: ChecklistItem) {
         self.item = item
@@ -22,6 +23,7 @@ struct EditItemSheet: View {
         _dueTime = State(initialValue: item.dueTime ?? Date())
         _hasDueTime = State(initialValue: item.dueTime != nil)
         _importance = State(initialValue: item.importance)
+        _customColor = State(initialValue: item.customColor)
     }
 
     private var canSave: Bool {
@@ -46,7 +48,7 @@ struct EditItemSheet: View {
                 DatePicker(L.dueTimeLabel.text(settings.language), selection: $dueTime)
             }
 
-            ImportancePicker(selection: $importance)
+            ImportancePicker(selection: $importance, customColor: $customColor)
 
             HStack {
                 Button(L.deleteButton.text(settings.language), role: .destructive) {
@@ -60,6 +62,7 @@ struct EditItemSheet: View {
                     updated.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
                     updated.dueTime = hasDueTime ? dueTime : nil
                     updated.importance = importance
+                    updated.customColor = customColor
                     store.update(updated)
                     dismiss()
                 }

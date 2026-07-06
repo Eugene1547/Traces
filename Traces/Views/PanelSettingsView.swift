@@ -7,7 +7,6 @@ import SwiftUI
 
 struct PanelSettingsView: View {
     @EnvironmentObject private var settings: AppSettings
-    let onOpenMainWindow: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -32,10 +31,6 @@ struct PanelSettingsView: View {
             }
 
             Toggle(L.pinLabel.text(settings.language), isOn: $settings.isPinned)
-
-            Divider()
-
-            Button(L.openMainWindowButton.text(settings.language), action: onOpenMainWindow)
         }
         .padding(14)
         .frame(width: 200)

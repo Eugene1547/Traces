@@ -9,6 +9,7 @@ import Combine
 @MainActor
 final class AppSettings: ObservableObject {
     static let opacityRange: ClosedRange<Double> = 0.3...1.0
+    static let panelWidthRange: ClosedRange<Double> = 220...480
 
     private enum Keys {
         static let opacity = "settings.opacity"
@@ -16,6 +17,7 @@ final class AppSettings: ObservableObject {
         static let sortRule = "settings.sortRule"
         static let isDarkMode = "settings.isDarkMode"
         static let language = "settings.language"
+        static let panelWidth = "settings.panelWidth"
     }
 
     @Published var opacity: Double {
@@ -23,6 +25,14 @@ final class AppSettings: ObservableObject {
             let clamped = min(max(opacity, Self.opacityRange.lowerBound), Self.opacityRange.upperBound)
             if clamped != opacity { opacity = clamped; return }
             defaults.set(opacity, forKey: Keys.opacity)
+        }
+    }
+
+    @Published var panelWidth: Double {
+        didSet {
+            let clamped = min(max(panelWidth, Self.panelWidthRange.lowerBound), Self.panelWidthRange.upperBound)
+            if clamped != panelWidth { panelWidth = clamped; return }
+            defaults.set(panelWidth, forKey: Keys.panelWidth)
         }
     }
 
@@ -50,6 +60,11 @@ final class AppSettings: ObservableObject {
             opacity = defaults.double(forKey: Keys.opacity)
         } else {
             opacity = 0.85
+        }
+        if defaults.object(forKey: Keys.panelWidth) != nil {
+            panelWidth = defaults.double(forKey: Keys.panelWidth)
+        } else {
+            panelWidth = 280
         }
         if defaults.object(forKey: Keys.isPinned) != nil {
             isPinned = defaults.bool(forKey: Keys.isPinned)
