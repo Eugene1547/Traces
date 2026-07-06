@@ -10,6 +10,8 @@ struct FloatingChecklistView: View {
     @EnvironmentObject private var store: ChecklistStore
     @EnvironmentObject private var settings: AppSettings
     @State private var showSettings = false
+    @State private var draggingItemID: UUID?
+    @State private var hoveredGap: Int?
 
     let onOpenMainWindow: () -> Void
 
@@ -49,29 +51,15 @@ struct FloatingChecklistView: View {
                     .padding(.vertical, 24)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(displayedItems) { item in
-                        FloatingRowView(item: item) {
+                    ForEach(Array(displayedItems.enumerated()), id: \.element.id) { index, item in
+                        GapDropZone(index: index, hoveredGap: $hoveredGap, onDrop: performReorder)
+                        FloatingRowView(item: item, isDragging: draggingItemID == item.id) {
                             store.complete(item.id)
-                        }
-                        .onDrag {
-                            let provider = NSItemProvider()
-                            provider.registerDataRepresentation(
-                                forTypeIdentifier: UTType.checklistItemID.identifier,
-                                visibility: .ownProcess
-                            ) { completion in
-                                completion(Data(item.id.uuidString.utf8), nil)
-                                return nil
-                            }
-                            return provider
-                        }
-                        .onDrop(
-                            of: [.checklistItemID],
-                            delegate: ReorderDropDelegate(targetID: item.id, onReorder: handleReorder)
-                        )
-                        if item.id != displayedItems.last?.id {
-                            Divider().opacity(0.15).padding(.leading, 34)
+                        } onDragStart: {
+                            draggingItemID = item.id
                         }
                     }
+                    GapDropZone(index: displayedItems.count, hoveredGap: $hoveredGap, onDrop: performReorder)
                 }
             }
         }
@@ -112,36 +100,78 @@ struct FloatingChecklistView: View {
         .gesture(WindowDragGesture())
     }
 
-    private func handleReorder(draggedID: UUID, targetID: UUID) {
-        guard draggedID != targetID else { return }
+    /// Inserts the item currently being dragged before `displayedItems[gapIndex]`
+    /// (or at the end, when `gapIndex == displayedItems.count`).
+    private func performReorder(at gapIndex: Int) -> Bool {
+        guard let draggedID = draggingItemID else { return false }
         var order = displayedItems.map(\.id)
-        guard let from = order.firstIndex(of: draggedID), let to = order.firstIndex(of: targetID) else { return }
+        guard let from = order.firstIndex(of: draggedID) else { return false }
         order.remove(at: from)
-        order.insert(draggedID, at: to)
-        store.reorder(ids: order)
+        let insertAt = from < gapIndex ? gapIndex - 1 : gapIndex
+        order.insert(draggedID, at: min(insertAt, order.count))
+        withAnimation(.easeInOut(duration: 0.2)) {
+            store.reorder(ids: order)
+        }
         settings.sortRule = .manual
+        draggingItemID = nil
+        return true
     }
 }
 
-/// A private, in-process-only UTI for reorder drags. Using `.text` here previously let macOS
-/// treat the drag as a droppable text clipping, so dropping outside the app (e.g. on the Desktop)
-/// created a stray file from the dragged item's id. This type never leaves the app.
-private extension UTType {
+/// A custom, unregistered UTI for reorder drags. Using `.text` here previously let macOS treat
+/// the drag as a droppable text clipping, so dropping outside the app (e.g. on the Desktop)
+/// created a stray file from the dragged item's id — Finder only knows how to conjure files out
+/// of recognized types like plain text, so a type it's never seen is never offered as one.
+///
+/// Note: don't pair this with `visibility: .ownProcess` on the item provider. Even an in-app drag
+/// is brokered through the system pasteboard server, which isn't literally "the same process" as
+/// either side, so `.ownProcess` silently drops the data before our own `onDrop` ever sees it.
+/// `.all` is what actually reaches `performDrop` here.
+extension UTType {
     static let checklistItemID = UTType(exportedAs: "com.traces.app.checklist-item-id")
 }
 
-private struct ReorderDropDelegate: DropDelegate {
-    let targetID: UUID
-    let onReorder: (_ draggedID: UUID, _ targetID: UUID) -> Void
+/// A thin drop target sitting between (and around) rows, representing "insert here" rather than
+/// "swap with this row". Shows a highlighted insertion line while a drag hovers over it.
+private struct GapDropZone: View {
+    let index: Int
+    @Binding var hoveredGap: Int?
+    let onDrop: (Int) -> Bool
 
-    func performDrop(info: DropInfo) -> Bool {
-        guard let provider = info.itemProviders(for: [.checklistItemID]).first else { return false }
-        provider.loadDataRepresentation(forTypeIdentifier: UTType.checklistItemID.identifier) { data, _ in
-            guard let data, let idString = String(data: data, encoding: .utf8), let draggedID = UUID(uuidString: idString) else { return }
-            DispatchQueue.main.async {
-                onReorder(draggedID, targetID)
+    var body: some View {
+        ZStack {
+            if hoveredGap == index {
+                Rectangle()
+                    .fill(Color.accentColor)
+                    .frame(height: 2)
+                    .padding(.horizontal, 32)
+            } else {
+                Divider().opacity(0.15).padding(.leading, 34)
             }
         }
-        return true
+        .frame(height: 9)
+        .contentShape(Rectangle())
+        .onDrop(of: [.checklistItemID], delegate: GapDropDelegate(index: index, hoveredGap: $hoveredGap, onDrop: onDrop))
+    }
+}
+
+private struct GapDropDelegate: DropDelegate {
+    let index: Int
+    @Binding var hoveredGap: Int?
+    let onDrop: (Int) -> Bool
+
+    func dropEntered(info: DropInfo) {
+        withAnimation(.easeOut(duration: 0.15)) { hoveredGap = index }
+    }
+
+    func dropExited(info: DropInfo) {
+        withAnimation(.easeOut(duration: 0.15)) {
+            if hoveredGap == index { hoveredGap = nil }
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        defer { hoveredGap = nil }
+        return onDrop(index)
     }
 }
