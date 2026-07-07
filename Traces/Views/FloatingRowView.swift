@@ -9,12 +9,16 @@ import SwiftUI
 struct FloatingRowView: View {
     @EnvironmentObject private var settings: AppSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isHandleHovered = false
     @State private var isCheckboxHovered = false
     @State private var isCompleting = false
     let item: ChecklistItem
     let isDragging: Bool
     let onComplete: () -> Void
+    /// Fires at the click, before the completion beat delays `onComplete` — this is the moment
+    /// celebration effects should launch from.
+    let onCompletionBegan: () -> Void
     let onDragChanged: (CGSize) -> Void
     let onDragEnded: () -> Void
 
@@ -70,13 +74,12 @@ struct FloatingRowView: View {
         .opacity(isCompleting ? 0.55 : 1)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isCompleting)
         .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.dragAccent.opacity(isDragging ? 0.15 : 0))
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.dragAccent.opacity(isDragging ? 0.5 : 0), lineWidth: 1)
-            }
-            .padding(.horizontal, 4)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(
+                    (colorScheme == .dark ? Color(white: 0.35).opacity(0.35) : Color.gray.opacity(0.1))
+                        .opacity(isDragging ? 1 : 0)
+                )
+                .padding(.horizontal, 4)
         )
     }
 
@@ -91,6 +94,7 @@ struct FloatingRowView: View {
                 onComplete()
                 return
             }
+            onCompletionBegan()
             isCompleting = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 onComplete()

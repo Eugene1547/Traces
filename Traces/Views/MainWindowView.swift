@@ -17,7 +17,7 @@ struct MainWindowView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Traces")
+                Text("Track your traces")
                     .font(.headline)
                 Spacer()
                 Button {
@@ -30,7 +30,9 @@ struct MainWindowView: View {
                 .help("切换语言 / Switch language")
 
                 Button {
-                    settings.isDarkMode.toggle()
+                    ThemeTransition.crossfade {
+                        settings.isDarkMode.toggle()
+                    }
                 } label: {
                     Image(systemName: settings.isDarkMode ? "moon.fill" : "sun.max.fill")
                 }
@@ -52,9 +54,12 @@ struct MainWindowView: View {
                         TodoRow(item: item) {
                             editingItem = item
                         } onDelete: {
-                            store.delete(item.id)
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                store.delete(item.id)
+                            }
                         }
                         .padding(.vertical, 6)
+                        .transition(.opacity)
                         if item.id != sortedTodoItems.last?.id {
                             Divider()
                         }
@@ -65,11 +70,16 @@ struct MainWindowView: View {
 
                     ForEach(store.completedItems) { item in
                         CompletedRow(item: item) {
-                            store.reopen(item.id)
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                store.reopen(item.id)
+                            }
                         } onDelete: {
-                            store.delete(item.id)
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                store.delete(item.id)
+                            }
                         }
                         .padding(.vertical, 6)
+                        .transition(.opacity)
                         if item.id != store.completedItems.last?.id {
                             Divider()
                         }

@@ -9,10 +9,20 @@ struct AddItemFormView: View {
     @EnvironmentObject private var store: ChecklistStore
     @EnvironmentObject private var settings: AppSettings
     @State private var name = ""
-    @State private var dueTime = Date()
+    @State private var dueTime = AddItemFormView.nextFullHour()
     @State private var hasDueTime = true
     @State private var importance: Importance = .medium
     @State private var customColor: RGBAColor?
+
+    /// Default due time: the upcoming full hour (14:37 → 15:00). Snapping down instead would
+    /// produce a time already in the past, making a freshly added item instantly overdue.
+    private static func nextFullHour(after date: Date = Date()) -> Date {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.year, .month, .day, .hour], from: date)
+        guard let floor = calendar.date(from: components),
+              let next = calendar.date(byAdding: .hour, value: 1, to: floor) else { return date }
+        return next
+    }
 
     private var canAdd: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -64,7 +74,7 @@ struct AddItemFormView: View {
         name = ""
         importance = .medium
         customColor = nil
-        dueTime = Date()
+        dueTime = Self.nextFullHour()
         hasDueTime = true
     }
 }
