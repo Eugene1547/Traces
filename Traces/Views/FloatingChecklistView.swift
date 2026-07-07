@@ -57,7 +57,11 @@ struct FloatingChecklistView: View {
                         FloatingRowView(
                             item: item,
                             isDragging: draggingItemID == item.id,
-                            onComplete: { store.complete(item.id) },
+                            onComplete: {
+                                withAnimation(.easeOut(duration: 0.25)) {
+                                    store.complete(item.id)
+                                }
+                            },
                             onDragChanged: { translation in
                                 handleDragChanged(itemID: item.id, translation: translation)
                             },
@@ -71,6 +75,7 @@ struct FloatingChecklistView: View {
                                 )
                             }
                         )
+                        .transition(.opacity)
                     }
                     GapIndicator(index: displayedItems.count, itemCount: displayedItems.count, hoveredGap: hoveredGap)
                 }
@@ -108,14 +113,14 @@ struct FloatingChecklistView: View {
             Button(action: onOpenMainWindow) {
                 Image(systemName: "macwindow")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HoverIconButtonStyle())
             .help(L.openMainWindowButton.text(settings.language))
             Button {
                 showSettings.toggle()
             } label: {
                 Image(systemName: "gearshape")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HoverIconButtonStyle())
             // Pushes the gear left so its right edge lines up with the rows' time text
             // (rows reserve 4pt trailing padding + 13pt drag handle + 2pt spacing ≈ 19pt,
             // versus the header's own 10pt trailing padding).
