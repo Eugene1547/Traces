@@ -4,12 +4,15 @@
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct FloatingChecklistView: View {
     @EnvironmentObject private var store: ChecklistStore
     @EnvironmentObject private var settings: AppSettings
     @State private var showSettings = false
+    @State private var draggingItemID: UUID?
+    @State private var dragTranslation: CGSize = .zero
+    @State private var hoveredGap: Int?
+    @State private var rowFrames: [UUID: CGRect] = [:]
 
     let onOpenMainWindow: () -> Void
 
@@ -49,28 +52,40 @@ struct FloatingChecklistView: View {
                     .padding(.vertical, 24)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(displayedItems) { item in
-                        FloatingRowView(item: item) {
-                            store.complete(item.id)
-                        }
-                        .onDrag {
-                            let provider = NSItemProvider()
-                            provider.registerDataRepresentation(
-                                forTypeIdentifier: UTType.checklistItemID.identifier,
-                                visibility: .ownProcess
-                            ) { completion in
-                                completion(Data(item.id.uuidString.utf8), nil)
-                                return nil
-                            }
-                            return provider
-                        }
-                        .onDrop(
-                            of: [.checklistItemID],
-                            delegate: ReorderDropDelegate(targetID: item.id, onReorder: handleReorder)
+                    ForEach(Array(displayedItems.enumerated()), id: \.element.id) { index, item in
+                        GapIndicator(index: index, itemCount: displayedItems.count, hoveredGap: hoveredGap)
+                        FloatingRowView(
+                            item: item,
+                            isDragging: draggingItemID == item.id,
+                            onComplete: { store.complete(item.id) },
+                            onDragChanged: { translation in
+                                handleDragChanged(itemID: item.id, translation: translation)
+                            },
+                            onDragEnded: handleDragEnded
                         )
-                        if item.id != displayedItems.last?.id {
-                            Divider().opacity(0.15).padding(.leading, 34)
-                        }
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear.preference(
+                                    key: RowFramePreferenceKey.self,
+                                    value: [item.id: proxy.frame(in: .named("floatingList"))]
+                                )
+                            }
+                        )
+                    }
+                    GapIndicator(index: displayedItems.count, itemCount: displayedItems.count, hoveredGap: hoveredGap)
+                }
+                .coordinateSpace(name: "floatingList")
+                .onPreferenceChange(RowFramePreferenceKey.self) { rowFrames = $0 }
+                .overlay {
+                    // The dragged row's handle icon, lifted out of the row and following the
+                    // cursor (the in-row copy hides itself while dragging).
+                    if let id = draggingItemID, let frame = rowFrames[id] {
+                        DragHandleGlyph()
+                            .position(
+                                x: frame.maxX - 10.5 + dragTranslation.width,
+                                y: frame.midY + dragTranslation.height
+                            )
+                            .allowsHitTesting(false)
                     }
                 }
             }
@@ -101,47 +116,99 @@ struct FloatingChecklistView: View {
                 Image(systemName: "gearshape")
             }
             .buttonStyle(.plain)
+            // Pushes the gear left so its right edge lines up with the rows' time text
+            // (rows reserve 4pt trailing padding + 13pt drag handle + 2pt spacing ≈ 19pt,
+            // versus the header's own 10pt trailing padding).
+            .padding(.trailing, 9)
             .popover(isPresented: $showSettings, arrowEdge: .bottom) {
                 PanelSettingsView()
                     .environmentObject(settings)
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.leading, 14)
+        .padding(.trailing, 10)
         .padding(.vertical, 8)
         .contentShape(Rectangle())
         .gesture(WindowDragGesture())
     }
 
-    private func handleReorder(draggedID: UUID, targetID: UUID) {
-        guard draggedID != targetID else { return }
+    private func handleDragChanged(itemID: UUID, translation: CGSize) {
+        if draggingItemID != itemID { draggingItemID = itemID }
+        dragTranslation = translation
+
+        guard let startFrame = rowFrames[itemID],
+              let from = displayedItems.firstIndex(where: { $0.id == itemID }) else { return }
+        let currentY = startFrame.midY + translation.height
+
+        // Count how many of the *other* rows sit above the cursor...
+        var gap = 0
+        for item in displayedItems where item.id != itemID {
+            if let frame = rowFrames[item.id], currentY > frame.midY {
+                gap += 1
+            }
+        }
+        // ...then convert that position-among-others into an index in the on-screen gap
+        // list, which still contains the dragged row. Below the dragged row the two
+        // indexings differ by one; without this shift the bottommost gap is unreachable
+        // when dragging downward.
+        let visualGap = gap <= from ? gap : gap + 1
+
+        if hoveredGap != visualGap {
+            hoveredGap = visualGap
+        }
+    }
+
+    private func handleDragEnded() {
+        defer {
+            draggingItemID = nil
+            dragTranslation = .zero
+            hoveredGap = nil
+        }
+        guard let draggedID = draggingItemID, let gapIndex = hoveredGap else { return }
         var order = displayedItems.map(\.id)
-        guard let from = order.firstIndex(of: draggedID), let to = order.firstIndex(of: targetID) else { return }
+        guard let from = order.firstIndex(of: draggedID) else { return }
         order.remove(at: from)
-        order.insert(draggedID, at: to)
-        store.reorder(ids: order)
+        let insertAt = from < gapIndex ? gapIndex - 1 : gapIndex
+        order.insert(draggedID, at: min(insertAt, order.count))
+        withAnimation(.easeInOut(duration: 0.2)) {
+            store.reorder(ids: order)
+        }
         settings.sortRule = .manual
     }
 }
 
-/// A private, in-process-only UTI for reorder drags. Using `.text` here previously let macOS
-/// treat the drag as a droppable text clipping, so dropping outside the app (e.g. on the Desktop)
-/// created a stray file from the dragged item's id. This type never leaves the app.
-private extension UTType {
-    static let checklistItemID = UTType(exportedAs: "com.traces.app.checklist-item-id")
+extension Color {
+    /// #211F94 — shared accent for the reorder insertion line and the dragged row's highlight.
+    static let dragAccent = Color(red: 0x21 / 255.0, green: 0x1F / 255.0, blue: 0x94 / 255.0)
 }
 
-private struct ReorderDropDelegate: DropDelegate {
-    let targetID: UUID
-    let onReorder: (_ draggedID: UUID, _ targetID: UUID) -> Void
+private struct RowFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [UUID: CGRect] = [:]
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
 
-    func performDrop(info: DropInfo) -> Bool {
-        guard let provider = info.itemProviders(for: [.checklistItemID]).first else { return false }
-        provider.loadDataRepresentation(forTypeIdentifier: UTType.checklistItemID.identifier) { data, _ in
-            guard let data, let idString = String(data: data, encoding: .utf8), let draggedID = UUID(uuidString: idString) else { return }
-            DispatchQueue.main.async {
-                onReorder(draggedID, targetID)
+/// A thin visual indicator sitting between (and around) rows, showing where a drag would insert.
+/// The edge gaps (above the first row, below the last) never show an idle divider and stay
+/// compact, so the list doesn't gain extra top/bottom padding from them.
+private struct GapIndicator: View {
+    let index: Int
+    let itemCount: Int
+    let hoveredGap: Int?
+
+    private var isEdge: Bool { index == 0 || index == itemCount }
+
+    var body: some View {
+        ZStack {
+            if hoveredGap == index {
+                Rectangle()
+                    .fill(Color.dragAccent)
+                    .frame(height: 2)
+            } else if !isEdge {
+                Divider().opacity(0.15).padding(.leading, 34)
             }
         }
-        return true
+        .frame(height: isEdge ? 4 : 9)
     }
 }
