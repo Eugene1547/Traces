@@ -17,7 +17,7 @@ struct MainWindowView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Traces")
+                Text("Track your traces")
                     .font(.headline)
                 Spacer()
                 Button {
@@ -26,15 +26,17 @@ struct MainWindowView: View {
                     Text(settings.language.shortLabel)
                         .font(.caption.bold())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HoverIconButtonStyle())
                 .help("切换语言 / Switch language")
 
                 Button {
-                    settings.isDarkMode.toggle()
+                    ThemeTransition.crossfade {
+                        settings.isDarkMode.toggle()
+                    }
                 } label: {
                     Image(systemName: settings.isDarkMode ? "moon.fill" : "sun.max.fill")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HoverIconButtonStyle())
                 .help(settings.isDarkMode ? "切换为浅色模式" : "切换为深色模式")
             }
             .padding(.horizontal)
@@ -52,9 +54,12 @@ struct MainWindowView: View {
                         TodoRow(item: item) {
                             editingItem = item
                         } onDelete: {
-                            store.delete(item.id)
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                store.delete(item.id)
+                            }
                         }
                         .padding(.vertical, 6)
+                        .transition(.opacity)
                         if item.id != sortedTodoItems.last?.id {
                             Divider()
                         }
@@ -65,11 +70,16 @@ struct MainWindowView: View {
 
                     ForEach(store.completedItems) { item in
                         CompletedRow(item: item) {
-                            store.reopen(item.id)
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                store.reopen(item.id)
+                            }
                         } onDelete: {
-                            store.delete(item.id)
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                store.delete(item.id)
+                            }
                         }
                         .padding(.vertical, 6)
+                        .transition(.opacity)
                         if item.id != store.completedItems.last?.id {
                             Divider()
                         }
@@ -114,25 +124,28 @@ private struct TodoRow: View {
     }()
 
     var body: some View {
-        HStack {
-            Circle()
-                .fill(item.displayColor)
-                .frame(width: 8, height: 8)
-            Text(item.name)
-            Spacer()
-            Text(item.dueTime.map { Self.timeFormatter.string(from: $0) } ?? L.noDeadlineShort.text(settings.language))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Button {
-                onDelete()
-            } label: {
-                Image(systemName: "xmark.circle")
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            let isOverdue = item.isOverdue(at: context.date)
+            HStack {
+                Circle()
+                    .fill(item.displayColor)
+                    .frame(width: 8, height: 8)
+                Text(item.name)
+                    .foregroundStyle(isOverdue ? AnyShapeStyle(Color.red) : AnyShapeStyle(.primary))
+                Spacer()
+                Text(item.dueTime.map { Self.timeFormatter.string(from: $0) } ?? L.noDeadlineShort.text(settings.language))
+                    .font(.caption)
+                    .foregroundStyle(isOverdue ? AnyShapeStyle(Color.red) : AnyShapeStyle(.secondary))
+                Button {
+                    onDelete()
+                } label: {
+                    Image(systemName: "xmark.circle")
+                }
+                .buttonStyle(HoverIconButtonStyle())
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onTap)
         }
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
     }
 }
 
@@ -169,8 +182,7 @@ private struct CompletedRow: View {
             } label: {
                 Image(systemName: "xmark.circle")
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+            .buttonStyle(HoverIconButtonStyle())
         }
     }
 }

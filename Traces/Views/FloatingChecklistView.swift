@@ -9,10 +9,18 @@ struct FloatingChecklistView: View {
     @EnvironmentObject private var store: ChecklistStore
     @EnvironmentObject private var settings: AppSettings
     @State private var showSettings = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var draggingItemID: UUID?
     @State private var dragTranslation: CGSize = .zero
     @State private var hoveredGap: Int?
     @State private var rowFrames: [UUID: CGRect] = [:]
+    @State private var confettiBursts: [ConfettiBurst] = []
+
+    private struct ConfettiBurst: Identifiable {
+        let id = UUID()
+        let origin: CGPoint
+        let seed: UInt64
+    }
 
     let onOpenMainWindow: () -> Void
 
@@ -57,7 +65,14 @@ struct FloatingChecklistView: View {
                         FloatingRowView(
                             item: item,
                             isDragging: draggingItemID == item.id,
-                            onComplete: { store.complete(item.id) },
+                            onComplete: {
+                                withAnimation(.easeOut(duration: 0.25)) {
+                                    store.complete(item.id)
+                                }
+                            },
+                            onCompletionBegan: {
+                                spawnCompletionEffect(for: item.id)
+                            },
                             onDragChanged: { translation in
                                 handleDragChanged(itemID: item.id, translation: translation)
                             },
@@ -71,6 +86,7 @@ struct FloatingChecklistView: View {
                                 )
                             }
                         )
+                        .transition(.opacity)
                     }
                     GapIndicator(index: displayedItems.count, itemCount: displayedItems.count, hoveredGap: hoveredGap)
                 }
@@ -88,6 +104,11 @@ struct FloatingChecklistView: View {
                             .allowsHitTesting(false)
                     }
                 }
+                .overlay {
+                    ForEach(confettiBursts) { burst in
+                        ConfettiBurstView(origin: burst.origin, seed: burst.seed)
+                    }
+                }
             }
         }
         .padding(.bottom, 8)
@@ -96,6 +117,9 @@ struct FloatingChecklistView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .frame(width: settings.panelWidth)
+        // Double-clicking any non-interactive part of the panel (header, gaps, row text)
+        // opens the main window; buttons and drag handles swallow their own clicks first.
+        .onTapGesture(count: 2, perform: onOpenMainWindow)
         .preferredColorScheme(settings.isDarkMode ? .dark : .light)
     }
 
@@ -108,18 +132,18 @@ struct FloatingChecklistView: View {
             Button(action: onOpenMainWindow) {
                 Image(systemName: "macwindow")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HoverIconButtonStyle())
             .help(L.openMainWindowButton.text(settings.language))
             Button {
                 showSettings.toggle()
             } label: {
                 Image(systemName: "gearshape")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HoverIconButtonStyle())
             // Pushes the gear left so its right edge lines up with the rows' time text
             // (rows reserve 4pt trailing padding + 13pt drag handle + 2pt spacing ≈ 19pt,
             // versus the header's own 10pt trailing padding).
-            .padding(.trailing, 9)
+            .padding(.trailing, 7)
             .popover(isPresented: $showSettings, arrowEdge: .bottom) {
                 PanelSettingsView()
                     .environmentObject(settings)
@@ -130,6 +154,20 @@ struct FloatingChecklistView: View {
         .padding(.vertical, 8)
         .contentShape(Rectangle())
         .gesture(WindowDragGesture())
+    }
+
+    /// Launches the configured celebration at the completing row's checkbox. Gated on the
+    /// effect setting and Reduce Motion; future effects switch here on `settings.completionEffect`.
+    private func spawnCompletionEffect(for itemID: UUID) {
+        guard settings.completionEffect == .confetti, !reduceMotion,
+              let frame = rowFrames[itemID] else { return }
+        // The checkbox glyph sits just inside the row's 14pt leading padding.
+        let origin = CGPoint(x: frame.minX + 21, y: frame.midY)
+        let burst = ConfettiBurst(origin: origin, seed: .random(in: .min ... .max))
+        confettiBursts.append(burst)
+        DispatchQueue.main.asyncAfter(deadline: .now() + ConfettiBurstView.duration + 0.1) {
+            confettiBursts.removeAll { $0.id == burst.id }
+        }
     }
 
     private func handleDragChanged(itemID: UUID, translation: CGSize) {
@@ -193,6 +231,7 @@ private struct RowFramePreferenceKey: PreferenceKey {
 /// The edge gaps (above the first row, below the last) never show an idle divider and stay
 /// compact, so the list doesn't gain extra top/bottom padding from them.
 private struct GapIndicator: View {
+    @Environment(\.colorScheme) private var colorScheme
     let index: Int
     let itemCount: Int
     let hoveredGap: Int?
@@ -203,7 +242,7 @@ private struct GapIndicator: View {
         ZStack {
             if hoveredGap == index {
                 Rectangle()
-                    .fill(Color.dragAccent)
+                    .fill(colorScheme == .dark ? Color(white: 0.26) : Color(white: 0.78))
                     .frame(height: 2)
             } else if !isEdge {
                 Divider().opacity(0.15).padding(.leading, 34)

@@ -89,4 +89,10 @@ struct ChecklistItem: Identifiable, Codable, Equatable {
         }
         return importance.color
     }
+
+    /// True when the item has a due time in the past and isn't completed.
+    func isOverdue(at date: Date = Date()) -> Bool {
+        guard !isCompleted, let dueTime else { return false }
+        return dueTime < date
+    }
 }
