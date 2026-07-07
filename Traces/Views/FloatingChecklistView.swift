@@ -10,6 +10,7 @@ struct FloatingChecklistView: View {
     @EnvironmentObject private var settings: AppSettings
     @State private var showSettings = false
     @State private var draggingItemID: UUID?
+    @State private var dragTranslation: CGSize = .zero
     @State private var hoveredGap: Int?
     @State private var rowFrames: [UUID: CGRect] = [:]
 
@@ -75,6 +76,18 @@ struct FloatingChecklistView: View {
                 }
                 .coordinateSpace(name: "floatingList")
                 .onPreferenceChange(RowFramePreferenceKey.self) { rowFrames = $0 }
+                .overlay {
+                    // The dragged row's handle icon, lifted out of the row and following the
+                    // cursor (the in-row copy hides itself while dragging).
+                    if let id = draggingItemID, let frame = rowFrames[id] {
+                        DragHandleGlyph()
+                            .position(
+                                x: frame.maxX - 10.5 + dragTranslation.width,
+                                y: frame.midY + dragTranslation.height
+                            )
+                            .allowsHitTesting(false)
+                    }
+                }
             }
         }
         .padding(.bottom, 8)
@@ -103,12 +116,17 @@ struct FloatingChecklistView: View {
                 Image(systemName: "gearshape")
             }
             .buttonStyle(.plain)
+            // Pushes the gear left so its right edge lines up with the rows' time text
+            // (rows reserve 4pt trailing padding + 13pt drag handle + 2pt spacing ≈ 19pt,
+            // versus the header's own 10pt trailing padding).
+            .padding(.trailing, 9)
             .popover(isPresented: $showSettings, arrowEdge: .bottom) {
                 PanelSettingsView()
                     .environmentObject(settings)
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.leading, 14)
+        .padding(.trailing, 10)
         .padding(.vertical, 8)
         .contentShape(Rectangle())
         .gesture(WindowDragGesture())
@@ -116,6 +134,7 @@ struct FloatingChecklistView: View {
 
     private func handleDragChanged(itemID: UUID, translation: CGSize) {
         if draggingItemID != itemID { draggingItemID = itemID }
+        dragTranslation = translation
 
         guard let startFrame = rowFrames[itemID],
               let from = displayedItems.firstIndex(where: { $0.id == itemID }) else { return }
@@ -142,6 +161,7 @@ struct FloatingChecklistView: View {
     private func handleDragEnded() {
         defer {
             draggingItemID = nil
+            dragTranslation = .zero
             hoveredGap = nil
         }
         guard let draggedID = draggingItemID, let gapIndex = hoveredGap else { return }
@@ -158,8 +178,8 @@ struct FloatingChecklistView: View {
 }
 
 extension Color {
-    /// #0400FF — shared accent for the reorder insertion line and the dragged row's highlight.
-    static let dragAccent = Color(red: 0x04 / 255.0, green: 0x00 / 255.0, blue: 0xFF / 255.0)
+    /// #211F94 — shared accent for the reorder insertion line and the dragged row's highlight.
+    static let dragAccent = Color(red: 0x21 / 255.0, green: 0x1F / 255.0, blue: 0x94 / 255.0)
 }
 
 private struct RowFramePreferenceKey: PreferenceKey {
@@ -185,7 +205,6 @@ private struct GapIndicator: View {
                 Rectangle()
                     .fill(Color.dragAccent)
                     .frame(height: 2)
-                    .padding(.horizontal, 32)
             } else if !isEdge {
                 Divider().opacity(0.15).padding(.leading, 34)
             }

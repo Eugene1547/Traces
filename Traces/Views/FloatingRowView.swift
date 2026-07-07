@@ -8,6 +8,7 @@ import SwiftUI
 
 struct FloatingRowView: View {
     @EnvironmentObject private var settings: AppSettings
+    @State private var isHandleHovered = false
     let item: ChecklistItem
     let isDragging: Bool
     let onComplete: () -> Void
@@ -26,11 +27,16 @@ struct FloatingRowView: View {
             colorDot
             nameText
             Spacer(minLength: 4)
-            dueTimeText
-            dragHandle
+            HStack(spacing: 2) {
+                dueTimeText
+                dragHandle
+                // Hidden until hovered; while dragging it also hides here because a floating
+                // copy follows the cursor instead (drawn by FloatingChecklistView's overlay).
+                .opacity(isHandleHovered && !isDragging ? 1 : 0)
                 // .pointerStyle relies on key-window tracking that never fires in this
                 // nonactivating panel (same story as cursor rects); set NSCursor directly.
                 .onHover { hovering in
+                    isHandleHovered = hovering
                     (hovering ? NSCursor.pointingHand : NSCursor.arrow).set()
                 }
                 .gesture(
@@ -44,8 +50,10 @@ struct FloatingRowView: View {
                             onDragEnded()
                         }
                 )
+            }
         }
-        .padding(.horizontal, 10)
+        .padding(.leading, 14)
+        .padding(.trailing, 4)
         .padding(.vertical, 6)
         .contentShape(Rectangle())
         .background(
@@ -87,10 +95,23 @@ struct FloatingRowView: View {
     }
 
     private var dragHandle: some View {
-        Image(systemName: "line.3.horizontal")
-            .foregroundStyle(.tertiary)
-            .font(.system(size: 11))
-            .frame(width: 20, height: 20)
+        DragHandleGlyph()
+            .frame(width: 13, height: 20)
             .contentShape(Rectangle())
+    }
+}
+
+/// Hand-drawn stand-in for SF Symbol "line.3.horizontal": same three bars, but with adjustable
+/// line spacing (the symbol's built-in ~2pt can't be tweaked) and pre-narrowed to fit the
+/// 13pt-wide handle column. Also used by FloatingChecklistView for the cursor-following copy.
+struct DragHandleGlyph: View {
+    var body: some View {
+        VStack(spacing: 3) {
+            ForEach(0..<3, id: \.self) { _ in
+                Capsule()
+                    .fill(.tertiary)
+                    .frame(width: 9, height: 1)
+            }
+        }
     }
 }
