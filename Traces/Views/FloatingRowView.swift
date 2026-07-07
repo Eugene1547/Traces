@@ -3,13 +3,13 @@
 //  Traces
 //
 
+import AppKit
 import SwiftUI
 
 struct FloatingRowView: View {
     @EnvironmentObject private var settings: AppSettings
     let item: ChecklistItem
     let isDragging: Bool
-    let dragOffset: CGFloat
     let onComplete: () -> Void
     let onDragChanged: (CGSize) -> Void
     let onDragEnded: () -> Void
@@ -28,23 +28,35 @@ struct FloatingRowView: View {
             Spacer(minLength: 4)
             dueTimeText
             dragHandle
+                // .pointerStyle relies on key-window tracking that never fires in this
+                // nonactivating panel (same story as cursor rects); set NSCursor directly.
+                .onHover { hovering in
+                    (hovering ? NSCursor.pointingHand : NSCursor.arrow).set()
+                }
                 .gesture(
                     DragGesture(minimumDistance: 2)
-                        .onChanged { onDragChanged($0.translation) }
-                        .onEnded { _ in onDragEnded() }
+                        .onChanged {
+                            NSCursor.closedHand.set()
+                            onDragChanged($0.translation)
+                        }
+                        .onEnded { _ in
+                            NSCursor.arrow.set()
+                            onDragEnded()
+                        }
                 )
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .contentShape(Rectangle())
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(nsColor: .windowBackgroundColor))
-                .opacity(isDragging ? 1 : 0)
-                .shadow(color: .black.opacity(isDragging ? 0.25 : 0), radius: 6, y: 3)
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.dragAccent.opacity(isDragging ? 0.15 : 0))
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color.dragAccent.opacity(isDragging ? 0.5 : 0), lineWidth: 1)
+            }
+            .padding(.horizontal, 4)
         )
-        .offset(y: dragOffset)
-        .zIndex(isDragging ? 1 : 0)
     }
 
     private var checkboxButton: some View {

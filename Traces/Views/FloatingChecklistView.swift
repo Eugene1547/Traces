@@ -10,7 +10,6 @@ struct FloatingChecklistView: View {
     @EnvironmentObject private var settings: AppSettings
     @State private var showSettings = false
     @State private var draggingItemID: UUID?
-    @State private var dragTranslation: CGFloat = 0
     @State private var hoveredGap: Int?
     @State private var rowFrames: [UUID: CGRect] = [:]
 
@@ -53,11 +52,10 @@ struct FloatingChecklistView: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(displayedItems.enumerated()), id: \.element.id) { index, item in
-                        GapIndicator(index: index, hoveredGap: hoveredGap)
+                        GapIndicator(index: index, itemCount: displayedItems.count, hoveredGap: hoveredGap)
                         FloatingRowView(
                             item: item,
                             isDragging: draggingItemID == item.id,
-                            dragOffset: draggingItemID == item.id ? dragTranslation : 0,
                             onComplete: { store.complete(item.id) },
                             onDragChanged: { translation in
                                 handleDragChanged(itemID: item.id, translation: translation)
@@ -73,7 +71,7 @@ struct FloatingChecklistView: View {
                             }
                         )
                     }
-                    GapIndicator(index: displayedItems.count, hoveredGap: hoveredGap)
+                    GapIndicator(index: displayedItems.count, itemCount: displayedItems.count, hoveredGap: hoveredGap)
                 }
                 .coordinateSpace(name: "floatingList")
                 .onPreferenceChange(RowFramePreferenceKey.self) { rowFrames = $0 }
@@ -118,31 +116,32 @@ struct FloatingChecklistView: View {
 
     private func handleDragChanged(itemID: UUID, translation: CGSize) {
         if draggingItemID != itemID { draggingItemID = itemID }
-        dragTranslation = translation.height
 
-        guard let startFrame = rowFrames[itemID] else { return }
+        guard let startFrame = rowFrames[itemID],
+              let from = displayedItems.firstIndex(where: { $0.id == itemID }) else { return }
         let currentY = startFrame.midY + translation.height
-        let gap = gapIndex(for: currentY, excluding: itemID)
-        if hoveredGap != gap {
-            withAnimation(.easeOut(duration: 0.12)) { hoveredGap = gap }
-        }
-    }
 
-    /// Counts how many of the other rows sit above `y`, giving the gap index `y` currently falls into.
-    private func gapIndex(for y: CGFloat, excluding draggedID: UUID) -> Int {
+        // Count how many of the *other* rows sit above the cursor...
         var gap = 0
-        for id in displayedItems.map(\.id) where id != draggedID {
-            if let frame = rowFrames[id], y > frame.midY {
+        for item in displayedItems where item.id != itemID {
+            if let frame = rowFrames[item.id], currentY > frame.midY {
                 gap += 1
             }
         }
-        return gap
+        // ...then convert that position-among-others into an index in the on-screen gap
+        // list, which still contains the dragged row. Below the dragged row the two
+        // indexings differ by one; without this shift the bottommost gap is unreachable
+        // when dragging downward.
+        let visualGap = gap <= from ? gap : gap + 1
+
+        if hoveredGap != visualGap {
+            hoveredGap = visualGap
+        }
     }
 
     private func handleDragEnded() {
         defer {
             draggingItemID = nil
-            dragTranslation = 0
             hoveredGap = nil
         }
         guard let draggedID = draggingItemID, let gapIndex = hoveredGap else { return }
@@ -158,6 +157,11 @@ struct FloatingChecklistView: View {
     }
 }
 
+extension Color {
+    /// #0400FF — shared accent for the reorder insertion line and the dragged row's highlight.
+    static let dragAccent = Color(red: 0x04 / 255.0, green: 0x00 / 255.0, blue: 0xFF / 255.0)
+}
+
 private struct RowFramePreferenceKey: PreferenceKey {
     static var defaultValue: [UUID: CGRect] = [:]
     static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
@@ -166,21 +170,26 @@ private struct RowFramePreferenceKey: PreferenceKey {
 }
 
 /// A thin visual indicator sitting between (and around) rows, showing where a drag would insert.
+/// The edge gaps (above the first row, below the last) never show an idle divider and stay
+/// compact, so the list doesn't gain extra top/bottom padding from them.
 private struct GapIndicator: View {
     let index: Int
+    let itemCount: Int
     let hoveredGap: Int?
+
+    private var isEdge: Bool { index == 0 || index == itemCount }
 
     var body: some View {
         ZStack {
             if hoveredGap == index {
                 Rectangle()
-                    .fill(Color.accentColor)
+                    .fill(Color.dragAccent)
                     .frame(height: 2)
                     .padding(.horizontal, 32)
-            } else {
+            } else if !isEdge {
                 Divider().opacity(0.15).padding(.leading, 34)
             }
         }
-        .frame(height: 9)
+        .frame(height: isEdge ? 4 : 9)
     }
 }
