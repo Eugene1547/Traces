@@ -61,7 +61,7 @@ struct CalendarHeatmapView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
-        .onChange(of: range) { _ in selectedDay = nil }
+        .onChange(of: range) { selectedDay = nil }
     }
 
     // MARK: - Month grid
@@ -79,7 +79,7 @@ struct CalendarHeatmapView: View {
             }
             // Land on the current month; .all can start years back.
             .onAppear { proxy.scrollTo(startOfMonth(Date()), anchor: .center) }
-            .onChange(of: range) { _ in proxy.scrollTo(startOfMonth(Date()), anchor: .center) }
+            .onChange(of: range) { proxy.scrollTo(startOfMonth(Date()), anchor: .center) }
         }
         // Clicking the empty area around cells clears the day selection.
         .contentShape(Rectangle())
