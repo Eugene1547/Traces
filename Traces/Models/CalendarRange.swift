@@ -19,8 +19,8 @@ enum CalendarRange: String, CaseIterable, Identifiable {
         case (.sixMonths, .zh): return "六个月"
         case (.threeMonths, .zh): return "三个月"
         case (.all, .en): return "All"
-        case (.sixMonths, .en): return "6 Months"
-        case (.threeMonths, .en): return "3 Months"
+        case (.sixMonths, .en): return "6M"
+        case (.threeMonths, .en): return "3M"
         }
     }
 }

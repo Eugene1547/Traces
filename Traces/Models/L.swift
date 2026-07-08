@@ -29,6 +29,7 @@ enum L: String {
     case backToListHelp
     case pendingCard
     case darkModeHelp
+    case calendarSection
 
     private static let table: [L: (zh: String, en: String)] = [
         .newTodoTitle: ("新建待办事项", "New To-Do"),
@@ -53,6 +54,7 @@ enum L: String {
         .backToListHelp: ("返回列表", "Back to list"),
         .pendingCard: ("待完成", "Pending"),
         .darkModeHelp: ("切换深浅色模式", "Toggle appearance"),
+        .calendarSection: ("日历", "Calendar"),
     ]
 
     func text(_ language: AppLanguage) -> String {

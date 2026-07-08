@@ -5,19 +5,21 @@
 
 import SwiftUI
 
-/// GitHub-style heatmap calendar for the main window: one row per week, one rounded square
-/// per day (today is a circle), blue intensity encoding how many items are due (pending)
-/// or were finished (completed) that day. A segmented range control scopes both the visible
-/// months and the stat cards on the right; clicking a day scopes the cards to that day.
+/// Compact heatmap calendar for the main window: last/current/next month as continuous
+/// week rows (no scrolling), one small rounded square per day (today is a circle), blue
+/// intensity encoding how many items are due (pending) or were finished (completed) that
+/// day. The stat cards on the right can be scoped to all time / 6 months / 3 months, or
+/// to a single day by clicking it.
 struct CalendarHeatmapView: View {
     @EnvironmentObject private var store: ChecklistStore
     @EnvironmentObject private var settings: AppSettings
     @State private var range: CalendarRange = .threeMonths
     @State private var selectedDay: Date?
+    @State private var hoveredDay: Date?
 
-    private let cellSize: CGFloat = 26
-    private let cellSpacing: CGFloat = 5
-    private let gutterWidth: CGFloat = 42
+    private let cellSize: CGFloat = 15
+    private let cellSpacing: CGFloat = 4
+    private let gutterWidth: CGFloat = 34
 
     private var calendar: Calendar { .current }
 
@@ -44,124 +46,123 @@ struct CalendarHeatmapView: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
-            Picker("", selection: $range) {
-                ForEach(CalendarRange.allCases) { range in
-                    Text(range.label(settings.language)).tag(range)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(maxWidth: 280)
-
-            HStack(alignment: .top, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
+            titleHeader
+            HStack(alignment: .top, spacing: 24) {
                 monthGrid
                 statsColumn
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .onChange(of: range) { selectedDay = nil }
-    }
-
-    // MARK: - Month grid
-
-    private var monthGrid: some View {
-        ScrollViewReader { proxy in
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 18) {
-                    ForEach(monthStarts, id: \.self) { month in
-                        monthBlock(month)
-                            .id(month)
-                    }
-                }
-                .padding(.vertical, 6)
-            }
-            // Land on the current month; .all can start years back.
-            .onAppear { proxy.scrollTo(startOfMonth(Date()), anchor: .center) }
-            .onChange(of: range) { proxy.scrollTo(startOfMonth(Date()), anchor: .center) }
-        }
-        // Clicking the empty area around cells clears the day selection.
+        .padding(.horizontal)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // Clicking anywhere outside the day cells clears the selection.
         .contentShape(Rectangle())
         .onTapGesture { selectedDay = nil }
     }
 
-    /// First-of-month dates covered by the selected range, oldest first.
-    private var monthStarts: [Date] {
-        let currentMonth = startOfMonth(Date())
-        let offsets: ClosedRange<Int>
-        switch range {
-        case .threeMonths:
-            offsets = -1...1
-        case .sixMonths:
-            offsets = -1...4
-        case .all:
-            let earliestDay = statsByDay.keys.min() ?? Date()
-            let earliestMonth = startOfMonth(earliestDay)
-            let monthsBack = calendar.dateComponents([.month], from: earliestMonth, to: currentMonth).month ?? 0
-            offsets = -max(monthsBack, 1)...1
+    /// Same construction as the list view's section headers, so both pages share one voice.
+    private var titleHeader: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L.calendarSection.text(settings.language))
+                .font(.title3.bold())
+                .foregroundStyle(.primary)
+            Divider()
         }
-        return offsets.compactMap { calendar.date(byAdding: .month, value: $0, to: currentMonth) }
     }
 
-    private func monthBlock(_ monthStart: Date) -> some View {
+    /// Capsule chips matching ImportancePicker's style; scope the stat cards.
+    /// Disabled while a day is selected (the cards follow the selection then).
+    private var rangeChips: some View {
+        HStack(spacing: 4) {
+            ForEach(CalendarRange.allCases) { option in
+                Button {
+                    range = option
+                } label: {
+                    Text(option.label(settings.language))
+                        .font(.caption)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .background(range == option ? Color.secondary.opacity(0.15) : Color.clear)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .disabled(selectedDay != nil)
+        .opacity(selectedDay != nil ? 0.4 : 1)
+    }
+
+    // MARK: - Month grid
+
+    /// Prev month start (inclusive) and next month end (exclusive): the three months on display.
+    private var displayInterval: DateInterval? {
+        let currentMonth = startOfMonth(Date())
+        guard let start = calendar.date(byAdding: .month, value: -1, to: currentMonth),
+              let nextMonth = calendar.date(byAdding: .month, value: 1, to: currentMonth),
+              let nextInterval = calendar.dateInterval(of: .month, for: nextMonth)
+        else { return nil }
+        return DateInterval(start: start, end: nextInterval.end)
+    }
+
+    /// Continuous week rows covering the display interval; every week appears exactly once.
+    private var weekRows: [[Date]] {
+        guard let interval = displayInterval,
+              let firstWeek = calendar.dateInterval(of: .weekOfYear, for: interval.start)
+        else { return [] }
+        var rows: [[Date]] = []
+        var weekStart = firstWeek.start
+        while weekStart < interval.end {
+            let week = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: weekStart) }
+            rows.append(week.map { calendar.startOfDay(for: $0) })
+            guard let next = calendar.date(byAdding: .weekOfYear, value: 1, to: weekStart) else { break }
+            weekStart = next
+        }
+        return rows
+    }
+
+    private var monthGrid: some View {
         let today = calendar.startOfDay(for: Date())
-        let isCurrentMonth = calendar.isDate(monthStart, equalTo: today, toGranularity: .month)
+        let interval = displayInterval
         return VStack(alignment: .leading, spacing: cellSpacing) {
-            ForEach(Array(weeks(in: monthStart).enumerated()), id: \.offset) { rowIndex, week in
+            ForEach(weekRows, id: \.first) { week in
                 HStack(spacing: cellSpacing) {
-                    gutter(
-                        showLabel: rowIndex == 0,
-                        showTick: isCurrentMonth && week.contains(today),
-                        monthStart: monthStart
-                    )
+                    gutter(week: week, today: today)
                     ForEach(week, id: \.self) { day in
-                        dayCell(day, monthStart: monthStart, today: today)
+                        dayCell(day, interval: interval, today: today)
                     }
                 }
             }
         }
     }
 
-    /// Weeks overlapping the month. Boundary weeks are repeated in the adjacent month's
-    /// block with the out-of-month days dimmed, matching the reference design.
-    private func weeks(in monthStart: Date) -> [[Date]] {
-        guard let monthInterval = calendar.dateInterval(of: .month, for: monthStart),
-              let firstWeek = calendar.dateInterval(of: .weekOfYear, for: monthInterval.start)
-        else { return [] }
-        var result: [[Date]] = []
-        var weekStart = firstWeek.start
-        while weekStart < monthInterval.end {
-            let week = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: weekStart) }
-            result.append(week.map { calendar.startOfDay(for: $0) })
-            guard let next = calendar.date(byAdding: .weekOfYear, value: 1, to: weekStart) else { break }
-            weekStart = next
-        }
-        return result
-    }
-
-    /// Left column: month label on the block's first row, a tick beside the current week.
-    private func gutter(showLabel: Bool, showTick: Bool, monthStart: Date) -> some View {
-        ZStack(alignment: .leading) {
-            if showLabel {
-                Text(monthLabel(monthStart))
-                    .font(.caption.weight(.medium))
+    /// Left column: a month label on the week containing that month's 1st,
+    /// a tick beside the current week otherwise.
+    private func gutter(week: [Date], today: Date) -> some View {
+        let label = week
+            .first { calendar.component(.day, from: $0) == 1 && (displayInterval?.contains($0) ?? false) }
+            .map(monthLabel)
+        return ZStack(alignment: .leading) {
+            if let label {
+                Text(label)
+                    .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-            } else if showTick {
+            } else if week.contains(today) {
                 Rectangle()
                     .fill(.secondary)
-                    .frame(width: 14, height: 1.5)
+                    .frame(width: 12, height: 1.5)
             }
         }
         .frame(width: gutterWidth, height: cellSize, alignment: .leading)
     }
 
-    private func dayCell(_ day: Date, monthStart: Date, today: Date) -> some View {
-        let inMonth = calendar.isDate(day, equalTo: monthStart, toGranularity: .month)
-        let stats = inMonth ? statsByDay[day] : nil
-        let isToday = inMonth && day == today
-        let isSelected = inMonth && selectedDay == day
+    private func dayCell(_ day: Date, interval: DateInterval?, today: Date) -> some View {
+        let inRange = interval?.contains(day) ?? false
+        let stats = inRange ? statsByDay[day] : nil
+        let isToday = inRange && day == today
+        let isSelected = inRange && selectedDay == day
+        let isHovered = inRange && hoveredDay == day
         let shape = DayCellShape(isCircle: isToday)
 
         return Button {
@@ -170,29 +171,34 @@ struct CalendarHeatmapView: View {
             }
         } label: {
             ZStack {
-                shape.fill(baseFill(inMonth: inMonth))
+                shape.fill(baseFill(inRange: inRange))
                 shape.fill(Color.heatAccent.opacity(heatOpacity(count: stats?.total ?? 0)))
                 if isSelected {
-                    shape.strokeBorder(Color.heatAccent, lineWidth: 2)
+                    shape.strokeBorder(Color.heatAccent, lineWidth: 1.5)
+                } else if isHovered {
+                    shape.strokeBorder(Color.heatAccent.opacity(0.45), lineWidth: 1)
                 }
             }
             .frame(width: cellSize, height: cellSize)
         }
         .buttonStyle(.plain)
-        .allowsHitTesting(inMonth)
-        .help(inMonth ? tooltip(day: day, stats: stats) : "")
-        .accessibilityLabel(inMonth ? tooltip(day: day, stats: stats) : "")
+        .allowsHitTesting(inRange)
+        .onHover { hovering in
+            hoveredDay = hovering ? day : (hoveredDay == day ? nil : hoveredDay)
+        }
+        .help(inRange ? tooltip(day: day, stats: stats) : "")
+        .accessibilityLabel(inRange ? tooltip(day: day, stats: stats) : "")
     }
 
     // MARK: - Colors
 
-    /// Empty in-month days read light (near-white on dark, light gray on light);
-    /// out-of-month days sit barely above the window background.
-    private func baseFill(inMonth: Bool) -> Color {
+    /// In-range empty days read light (near-white on dark, light gray on light);
+    /// the few leading/trailing out-of-range days sit barely above the background.
+    private func baseFill(inRange: Bool) -> Color {
         if settings.isDarkMode {
-            return inMonth ? Color.white.opacity(0.85) : Color.white.opacity(0.06)
+            return inRange ? Color.white.opacity(0.85) : Color.white.opacity(0.06)
         }
-        return inMonth ? Color.primary.opacity(0.10) : Color.primary.opacity(0.04)
+        return inRange ? Color.primary.opacity(0.10) : Color.primary.opacity(0.04)
     }
 
     /// Blends the indigo accent over the light base: 1 item is a pale wash, 4+ is full accent.
@@ -211,23 +217,25 @@ struct CalendarHeatmapView: View {
 
     private var statsColumn: some View {
         let counts = displayedCounts
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 8) {
+            rangeChips
+
             // Reserve the caption line so cards don't jump when a day is selected.
             Text(selectedDay.map(dateString) ?? " ")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .padding(.leading, 2)
+
             StatCard(
                 title: L.completedSection.text(settings.language),
-                value: counts.completed,
-                isDark: settings.isDarkMode
+                value: counts.completed
             )
             StatCard(
                 title: L.pendingCard.text(settings.language),
-                value: counts.pending,
-                isDark: settings.isDarkMode
+                value: counts.pending
             )
         }
-        .frame(width: 128)
+        .frame(width: 150, alignment: .leading)
     }
 
     private var displayedCounts: (completed: Int, pending: Int) {
@@ -268,10 +276,10 @@ struct CalendarHeatmapView: View {
         calendar.dateInterval(of: .month, for: date)?.start ?? date
     }
 
-    private func monthLabel(_ monthStart: Date) -> String {
+    private func monthLabel(_ dayInMonth: Date) -> String {
         switch settings.language {
-        case .zh: return "\(calendar.component(.month, from: monthStart))月"
-        case .en: return Self.monthFormatter.string(from: monthStart).uppercased()
+        case .zh: return "\(calendar.component(.month, from: dayInMonth))月"
+        case .en: return Self.monthFormatter.string(from: dayInMonth).uppercased()
         }
     }
 
@@ -315,7 +323,7 @@ extension Color {
 }
 
 /// Rounded square for regular days, circle for today, usable as one insettable shape
-/// so fill and selection stroke share a code path.
+/// so fill, hover and selection strokes share a code path.
 private struct DayCellShape: InsettableShape {
     var isCircle: Bool
     var insetAmount: CGFloat = 0
@@ -325,7 +333,7 @@ private struct DayCellShape: InsettableShape {
         if isCircle {
             return Circle().path(in: inset)
         }
-        return RoundedRectangle(cornerRadius: 7, style: .continuous).path(in: inset)
+        return RoundedRectangle(cornerRadius: 4.5, style: .continuous).path(in: inset)
     }
 
     func inset(by amount: CGFloat) -> DayCellShape {
@@ -338,24 +346,24 @@ private struct DayCellShape: InsettableShape {
 private struct StatCard: View {
     let title: String
     let value: Int
-    let isDark: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 1) {
             Text(title)
                 .font(.caption)
-                .opacity(0.85)
+                .foregroundStyle(.secondary)
             Text("\(value)")
-                .font(.system(size: 28, weight: .semibold, design: .rounded))
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary)
                 .contentTransition(.numericText())
         }
-        .foregroundStyle(isDark ? Color.white : Color.primary)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isDark ? Color.white.opacity(0.32) : Color.primary.opacity(0.08))
+            // Same surface as AddItemFormView's card, so the two read as one family.
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Color.secondary.opacity(0.08))
         )
     }
 }
