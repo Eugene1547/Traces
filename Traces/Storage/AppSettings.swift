@@ -18,6 +18,7 @@ final class AppSettings: ObservableObject {
         static let isDarkMode = "settings.isDarkMode"
         static let language = "settings.language"
         static let panelWidth = "settings.panelWidth"
+        static let completionEffect = "settings.completionEffect"
     }
 
     @Published var opacity: Double {
@@ -52,6 +53,10 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(language.rawValue, forKey: Keys.language) }
     }
 
+    @Published var completionEffect: CompletionEffect {
+        didSet { defaults.set(completionEffect.rawValue, forKey: Keys.completionEffect) }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -81,6 +86,11 @@ final class AppSettings: ObservableObject {
             language = lang
         } else {
             language = .zh
+        }
+        if let raw = defaults.string(forKey: Keys.completionEffect), let effect = CompletionEffect(rawValue: raw) {
+            completionEffect = effect
+        } else {
+            completionEffect = .confetti
         }
     }
 }
