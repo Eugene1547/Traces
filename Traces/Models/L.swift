@@ -25,6 +25,10 @@ enum L: String {
     case pinLabel
     case openMainWindowButton
     case noDeadlineShort
+    case calendarToggleHelp
+    case backToListHelp
+    case pendingCard
+    case darkModeHelp
 
     private static let table: [L: (zh: String, en: String)] = [
         .newTodoTitle: ("新建待办事项", "New To-Do"),
@@ -45,6 +49,10 @@ enum L: String {
         .pinLabel: ("置顶", "Pin on top"),
         .openMainWindowButton: ("打开主窗口", "Open Main Window"),
         .noDeadlineShort: ("无期限", "No date"),
+        .calendarToggleHelp: ("日历视图", "Calendar view"),
+        .backToListHelp: ("返回列表", "Back to list"),
+        .pendingCard: ("待完成", "Pending"),
+        .darkModeHelp: ("切换深浅色模式", "Toggle appearance"),
     ]
 
     func text(_ language: AppLanguage) -> String {

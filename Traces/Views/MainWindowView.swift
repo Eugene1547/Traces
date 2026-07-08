@@ -8,7 +8,9 @@ import SwiftUI
 struct MainWindowView: View {
     @EnvironmentObject private var store: ChecklistStore
     @EnvironmentObject private var settings: AppSettings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var editingItem: ChecklistItem?
+    @State private var showCalendar = false
 
     private var sortedTodoItems: [ChecklistItem] {
         store.todoItems.sorted(by: { $0.sortOrder < $1.sortOrder })
@@ -20,6 +22,19 @@ struct MainWindowView: View {
                 Text("Traces")
                     .font(.headline)
                 Spacer()
+                Button {
+                    if reduceMotion {
+                        showCalendar.toggle()
+                    } else {
+                        withAnimation(.easeOut(duration: 0.18)) { showCalendar.toggle() }
+                    }
+                } label: {
+                    Image(systemName: "calendar")
+                        .foregroundStyle(showCalendar ? Color.heatAccent : Color.primary)
+                }
+                .buttonStyle(.plain)
+                .help((showCalendar ? L.backToListHelp : L.calendarToggleHelp).text(settings.language))
+
                 Button {
                     settings.language = settings.language == .zh ? .en : .zh
                 } label: {
@@ -35,7 +50,7 @@ struct MainWindowView: View {
                     Image(systemName: settings.isDarkMode ? "moon.fill" : "sun.max.fill")
                 }
                 .buttonStyle(.plain)
-                .help(settings.isDarkMode ? "切换为浅色模式" : "切换为深色模式")
+                .help(L.darkModeHelp.text(settings.language))
             }
             .padding(.horizontal)
             .padding(.top, 10)
@@ -43,7 +58,23 @@ struct MainWindowView: View {
 
             AddItemFormView()
             Divider()
-            ScrollView {
+            if showCalendar {
+                CalendarHeatmapView()
+                    .transition(.opacity)
+            } else {
+                listContent
+                    .transition(.opacity)
+            }
+        }
+        .frame(minWidth: 420, minHeight: 520)
+        .sheet(item: $editingItem) { item in
+            EditItemSheet(item: item)
+        }
+        .preferredColorScheme(settings.isDarkMode ? .dark : .light)
+    }
+
+    private var listContent: some View {
+        ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     SectionHeader(title: "\(L.todoSection.text(settings.language)) (\(store.todoItems.count))")
                         .padding(.top, 14)
@@ -77,13 +108,7 @@ struct MainWindowView: View {
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 14)
-            }
         }
-        .frame(minWidth: 420, minHeight: 520)
-        .sheet(item: $editingItem) { item in
-            EditItemSheet(item: item)
-        }
-        .preferredColorScheme(settings.isDarkMode ? .dark : .light)
     }
 }
 
